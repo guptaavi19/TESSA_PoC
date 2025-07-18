@@ -53,7 +53,7 @@ def execute_db_query(query: str, fetch_results: bool = True) -> Dict[str, Any]:
     """
     Execute SQL query against PostgreSQL database.
     """
-    conn = None
+    conn = psycopg2.connect(dsn=CONNECTION_STRING)
     cursor = None
     
     try:
