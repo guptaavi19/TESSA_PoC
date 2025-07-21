@@ -36,8 +36,8 @@ if old_connection_string and not old_connection_string.startswith("postgresql://
     # Use individual environment variables (RECOMMENDED)
     DB_HOST = os.getenv("DB_HOST", "tessapocserver.postgres.database.azure.com")
     DB_PORT = os.getenv("DB_PORT", "5432")
-    DB_USER = os.getenv("DB_USER", "TessaDBAdmin@tessapocserver")
-    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    DB_USER = os.getenv("DB_USER", "TessaDBAdmin")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "Admin@1234")
     DB_NAME = os.getenv("DB_NAME")
     
     if not DB_PASSWORD or not DB_NAME:
