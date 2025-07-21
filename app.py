@@ -46,8 +46,8 @@ if old_connection_string and not old_connection_string.startswith("postgresql://
         if old_connection_string:
             parts = old_connection_string.split("@")
             if len(parts) >= 3:
-                DB_USER = parts[0] if parts[0] else "TessaDBAdmin@tessapocserver"
-                DB_PASSWORD = parts[1] if parts[1] else "1234"
+                DB_USER = parts[0] if parts[0] else "TessaDBAdmin"
+                DB_PASSWORD = parts[1] if parts[1] else "Admin@1234"
                 host_port_db = parts[2]
                 if ":" in host_port_db:
                     host_part = host_port_db.split(":")[0]
