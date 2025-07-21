@@ -36,7 +36,7 @@ if old_connection_string and not old_connection_string.startswith("postgresql://
     # Use individual environment variables (RECOMMENDED)
     DB_HOST = os.getenv("DB_HOST", "tessapocserver.postgres.database.azure.com")
     DB_PORT = os.getenv("DB_PORT", "5432")
-    DB_USER = os.getenv("DB_USER", "Admin")
+    DB_USER = os.getenv("DB_USER", "TessaDBAdmin@tessapocserver")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
     DB_NAME = os.getenv("DB_NAME")
     
@@ -46,7 +46,7 @@ if old_connection_string and not old_connection_string.startswith("postgresql://
         if old_connection_string:
             parts = old_connection_string.split("@")
             if len(parts) >= 3:
-                DB_USER = parts[0] if parts[0] else "Admin"
+                DB_USER = parts[0] if parts[0] else "TessaDBAdmin@tessapocserver"
                 DB_PASSWORD = parts[1] if parts[1] else "1234"
                 host_port_db = parts[2]
                 if ":" in host_port_db:
@@ -65,9 +65,9 @@ else:
     print("Building connection string from individual environment variables")
     DB_HOST = os.getenv("DB_HOST", "tessapocserver.postgres.database.azure.com")
     DB_PORT = os.getenv("DB_PORT", "5432")
-    DB_USER = os.getenv("DB_USER", "Admin")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "your_password_here")
-    DB_NAME = os.getenv("DB_NAME", "your_database_name")
+    DB_USER = os.getenv("DB_USER", "TessaDBAdmin@tessapocserver")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "Admin@1234")
+    DB_NAME = os.getenv("DB_NAME", "tessa")
     CONNECTION_STRING = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 print(f"FINAL connection string: postgresql://{DB_USER if 'DB_USER' in locals() else 'unknown'}:****@{DB_HOST if 'DB_HOST' in locals() else 'unknown'}:{DB_PORT if 'DB_PORT' in locals() else 'unknown'}/{DB_NAME if 'DB_NAME' in locals() else 'unknown'}")
