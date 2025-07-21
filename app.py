@@ -17,9 +17,60 @@ import uvicorn
 from dotenv import load_dotenv
 load_dotenv()
 
-# Hard-coded database connection string
-# Replace with your actual PostgreSQL connection details
-CONNECTION_STRING = os.getenv("connection_string")
+# DEBUGGING: Let's see what environment variables are actually loaded
+print("=== ENVIRONMENT VARIABLES DEBUG ===")
+print(f"DB_HOST from env: {os.getenv('DB_HOST')}")
+print(f"DB_PORT from env: {os.getenv('DB_PORT')}")
+print(f"DB_USER from env: {os.getenv('DB_USER')}")
+print(f"DB_PASSWORD from env: {'***' if os.getenv('DB_PASSWORD') else 'NOT SET'}")
+print(f"DB_NAME from env: {os.getenv('DB_NAME')}")
+print(f"OLD connection_string env: {os.getenv('connection_string')}")
+print("=====================================")
+
+# FIXED: Proper PostgreSQL connection string format
+# Check if we should use the old connection_string or build a new one
+old_connection_string = os.getenv("connection_string")
+
+if old_connection_string and not old_connection_string.startswith("postgresql://"):
+    print("DETECTED MALFORMED connection_string - Building new connection string from individual components")
+    # Use individual environment variables (RECOMMENDED)
+    DB_HOST = os.getenv("DB_HOST", "tessapocserver.postgres.database.azure.com")
+    DB_PORT = os.getenv("DB_PORT", "5432")
+    DB_USER = os.getenv("DB_USER", "Admin")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    DB_NAME = os.getenv("DB_NAME")
+    
+    if not DB_PASSWORD or not DB_NAME:
+        print("ERROR: DB_PASSWORD or DB_NAME not set in environment variables!")
+        # Try to extract from the malformed connection string
+        if old_connection_string:
+            parts = old_connection_string.split("@")
+            if len(parts) >= 3:
+                DB_USER = parts[0] if parts[0] else "Admin"
+                DB_PASSWORD = parts[1] if parts[1] else "1234"
+                host_port_db = parts[2]
+                if ":" in host_port_db:
+                    host_part = host_port_db.split(":")[0]
+                    DB_HOST = host_part if host_part else "tessapocserver.postgres.database.azure.com"
+                print(f"EXTRACTED from malformed string - User: {DB_USER}, Host: {DB_HOST}")
+    
+    # Build proper connection string
+    CONNECTION_STRING = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    
+elif old_connection_string and old_connection_string.startswith("postgresql://"):
+    print("Using existing properly formatted connection string")
+    CONNECTION_STRING = old_connection_string
+    
+else:
+    print("Building connection string from individual environment variables")
+    DB_HOST = os.getenv("DB_HOST", "tessapocserver.postgres.database.azure.com")
+    DB_PORT = os.getenv("DB_PORT", "5432")
+    DB_USER = os.getenv("DB_USER", "Admin")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "your_password_here")
+    DB_NAME = os.getenv("DB_NAME", "your_database_name")
+    CONNECTION_STRING = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+print(f"FINAL connection string: postgresql://{DB_USER if 'DB_USER' in locals() else 'unknown'}:****@{DB_HOST if 'DB_HOST' in locals() else 'unknown'}:{DB_PORT if 'DB_PORT' in locals() else 'unknown'}/{DB_NAME if 'DB_NAME' in locals() else 'unknown'}")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -53,15 +104,30 @@ def execute_db_query(query: str, fetch_results: bool = True) -> Dict[str, Any]:
     """
     Execute SQL query against PostgreSQL database.
     """
-    conn = psycopg2.connect(dsn=CONNECTION_STRING)
+    conn = None
     cursor = None
     
     try:
-        # Connect to database using connection string
-        conn = psycopg2.connect(CONNECTION_STRING)
+        # FIXED: Proper connection handling for Azure PostgreSQL
+        print(f"Attempting to connect to database...")
+        
+        # Azure PostgreSQL often requires SSL and specific authentication format
+        if "tessapocserver.postgres.database.azure.com" in CONNECTION_STRING:
+            print("Detected Azure PostgreSQL - adding SSL requirements")
+            if "sslmode" not in CONNECTION_STRING:
+                ssl_connection = CONNECTION_STRING + "?sslmode=require"
+            else:
+                ssl_connection = CONNECTION_STRING
+        else:
+            ssl_connection = CONNECTION_STRING
+            
+        print(f"Final connection attempt with: {ssl_connection.replace(DB_PASSWORD if 'DB_PASSWORD' in locals() else 'password', '****')}")
+        
+        conn = psycopg2.connect(ssl_connection)
         cursor = conn.cursor()
         
         # Execute query
+        print(f"Executing query: {query[:100]}...")
         cursor.execute(query)
         
         if fetch_results and cursor.description:
@@ -105,6 +171,7 @@ def execute_db_query(query: str, fetch_results: bool = True) -> Dict[str, Any]:
             }
             
     except psycopg2.Error as e:
+        print(f"Database error: {str(e)}")
         if conn:
             conn.rollback()
         return {
@@ -115,6 +182,7 @@ def execute_db_query(query: str, fetch_results: bool = True) -> Dict[str, Any]:
             "message": f"Database error: {str(e)}"
         }
     except Exception as e:
+        print(f"Unexpected error: {str(e)}")
         if conn:
             conn.rollback()
         return {
@@ -137,6 +205,31 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "PostgreSQL Database API"}
 
+# ADDED: Database connection test endpoint
+@app.get("/test-connection")
+async def test_connection():
+    """Test database connection"""
+    try:
+        conn = psycopg2.connect(CONNECTION_STRING)
+        cursor = conn.cursor()
+        cursor.execute("SELECT version();")
+        version = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": "Database connection successful",
+            "postgres_version": version[0] if version else "Unknown",
+            "connection_info": f"{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Database connection failed: {str(e)}",
+            "connection_info": f"{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        }
+
 # Main query endpoint
 @app.post("/query", response_model=QueryResponse)
 async def execute_query(request: QueryRequest):
@@ -151,69 +244,6 @@ async def execute_query(request: QueryRequest):
         return QueryResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-# # OpenAPI schema endpoint for Azure AI Agent
-# @app.get("/openapi-schema")
-# async def get_openapi_schema():
-#     """
-#     Get OpenAPI schema for Azure AI Agent integration
-#     """
-    # return {
-    #     "openapi": "3.0.0",
-    #     "info": {
-    #         "title": "PostgreSQL Database API",
-    #         "description": "PostgreSQL database query API for Azure AI Agent",
-    #         "version": "1.0.0"
-    #     },
-    #     "servers": [
-    #         {
-    #             "url": "https://your-domain.com",
-    #             "description": "Production server"
-    #         }
-    #     ],
-    #     "paths": {
-    #         "/query": {
-    #             "post": {
-    #                 "summary": "Execute SQL Query",
-    #                 "description": "Execute SQL query against PostgreSQL database",
-    #                 "requestBody": {
-    #                     "required": True,
-    #                     "content": {
-    #                         "application/json": {
-    #                             "schema": {
-    #                                 "type": "object",
-    #                                 "properties": {
-    #                                     "query": {
-    #                                         "type": "string",
-    #                                         "description": "SQL query to execute"
-    #                                     },
-    #                                     "fetch_results": {
-    #                                         "type": "boolean",
-    #                                         "description": "Whether to return results",
-    #                                         "default": True
-    #                                     }
-    #                                 },
-    #                                 "required": ["query"]
-    #                             }
-    #                         }
-    #                     }
-    #                 },
-    #                 "responses": {
-    #                     "200": {
-    #                         "description": "Query executed successfully",
-    #                         "content": {
-    #                             "application/json": {
-    #                                 "schema": {
-    #                                     "$ref": "#/components/schemas/QueryResponse"
-    #                                 }
-    #                             }
-    #                         }
-    #                     }
-    #                 }
-    #             }
-    #         }
-    #     }
-    # }
 
 def main():
     """Main entry point for the FastAPI server"""
